@@ -38,6 +38,7 @@ class z.components.ContextMenuViewModel
     @data = params.data
     @entries = params.entries
     @placement = params.placement or 'left'
+    @element = component_info.element
 
     @bubble = undefined
 
@@ -51,16 +52,24 @@ class z.components.ContextMenuViewModel
       entries = if _.isFunction(@entries) then @entries() else @entries
       return entries?.entries
 
-    $(component_info.element)
-      .click =>
-        @bubble ?= new zeta.webapp.module.Bubble {host_selector: "##{@host_id}"}
-        @bubble.toggle()
-      .attr
-        'id': @host_id
-        'data-bubble': "##{@bubble_id}"
-        'data-placement': @placement
-        'data-context-tag': @tag
-        'data-context-data': @data
+    @element.addEventListener 'click', @on_context_menu_button_click
+    @element.setAttribute 'id', @host_id
+    @element.setAttribute 'data-bubble', "##{@bubble_id}"
+    @element.setAttribute 'data-placement', @placement
+    @element.setAttribute 'data-context-tag', @tag
+    @element.setAttribute 'data-context-data', @data
+
+    window.addEventListener 'scroll', @on_window_scroll
+
+  on_window_scroll: =>
+    @bubble?.hide()
+
+  on_context_menu_button_click: =>
+    @bubble ?= new zeta.webapp.module.Bubble {host_selector: "##{@host_id}"}
+    @bubble.toggle()
+
+  dispose: =>
+    window.removeEventListener 'scroll', @on_window_scroll
 
 
 ko.components.register 'context-menu',

@@ -465,11 +465,11 @@ class z.ViewModel.MessageListViewModel
   get_context_menu_entries: (message_et) ->
     entries = new z.components.ContextMenuEntries()
 
-    if message_et.is_deletable()
-      entries.push z.string.conversation_context_menu_delete, 'delete'
-
     if message_et.has_asset()
       entries.push z.string.conversation_context_menu_download, 'download'
+
+    if message_et.is_deletable()
+      entries.push z.string.conversation_context_menu_delete, 'delete'
 
     return entries
 
@@ -480,7 +480,7 @@ class z.ViewModel.MessageListViewModel
   @param data [Object] optional data
   ###
   on_context_menu_action: (tag, action, data) =>
-    return if not tag is 'message'
+    return if tag isnt 'message'
 
     message_et = @conversation().get_message_by_id data
 
@@ -488,8 +488,7 @@ class z.ViewModel.MessageListViewModel
       when 'delete'
         message_et?.delete()
       when 'download'
-        asset_et = message_et.get_first_asset()
-        asset_et?.download()
+        message_et?.get_first_asset()?.download()
 
   ###
   Shows detail image view.
