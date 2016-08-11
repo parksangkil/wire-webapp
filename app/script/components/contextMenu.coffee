@@ -45,10 +45,7 @@ class z.components.ContextMenuViewModel
     @bubble_id = z.util.create_random_uuid()
 
     @on_entry_click = (data) =>
-      amplify.publish z.event.WebApp.CONTEXT_MENU,
-        tag: @tag
-        data: @data
-        action: data.action
+      amplify.publish z.event.WebApp.CONTEXT_MENU, @tag, data.action, @data
 
     @get_entries = ->
       entries = if _.isFunction(@entries) then @entries() else @entries
@@ -62,6 +59,8 @@ class z.components.ContextMenuViewModel
         'id': @host_id
         'data-bubble': "##{@bubble_id}"
         'data-placement': @placement
+        'data-context-tag': @tag
+        'data-context-data': @data
 
 
 ko.components.register 'context-menu',
