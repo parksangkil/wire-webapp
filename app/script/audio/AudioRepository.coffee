@@ -19,12 +19,6 @@
 window.z ?= {}
 z.audio ?= {}
 
-# Enum of audio settings.
-z.audio.AudioSetting =
-  ALL: 'all'
-  NONE: 'none'
-  SOME: 'some'
-
 AUDIO_PATH = '/audio'
 
 # Audio repository for all audio interactions.
@@ -32,9 +26,14 @@ class z.audio.AudioRepository
   # Construct a new Audio Repository.
   constructor: ->
     @logger = new z.util.Logger 'z.audio.AudioRepository', z.config.LOGGER.OPTIONS
+
     @audio_context = undefined
+    @sounds = {}
+
     @in_loop = {}
-    @_init_sound_manager()
+
+    @_init_sounds()
+    @_subscribe_to_audio_events()
     @_subscribe_to_audio_properties()
 
   # Closing the AudioContext.
@@ -57,29 +56,99 @@ class z.audio.AudioRepository
       @logger.log @logger.levels.ERROR, 'The flow audio cannot use the Web Audio API as it is unavailable.'
       return undefined
 
-  ###
-  Initialize a sound.
+  # Preload all sounds for immediate playback.
+  preload: =>
+    @logger.log @logger.levels.INFO, 'Pre-loading audio files for immediate playback'
+    sound.load() for id, sound of @sounds
 
+  ###
+  Get the sound object
+  @param audio_id [z.audio.AudioType] Sound identifier
+  ###
+  _get_sound: (audio_id) =>
+    new Promise (resolve, reject) =>
+      if @sounds[audio_id]
+        resolve @sounds[audio_id]
+      else
+        reject new z.audio.AudioError 'Audio not found', z.audio.AudioError::TYPE.AUDIO_NOT_FOUND
+
+  ###
+  Initialize all sounds.
   @private
-  @param id [z.audio.AudioType] ID of the sound
-  @param url [String] URL of sound file
-  @return [Function] Function to set up the sound in SoundManager
   ###
-  _init_sound: (id, url) ->
-    return soundManager.createSound id: id, url: url
-
-  # Initialize all sounds.
   _init_sounds: ->
-    @alert = @_init_sound z.audio.AudioType.ALERT, "#{AUDIO_PATH}/alert.mp3"
-    @call_drop = @_init_sound z.audio.AudioType.CALL_DROP, "#{AUDIO_PATH}/call_drop.mp3"
-    @network_interruption = @_init_sound z.audio.AudioType.NETWORK_INTERRUPTION, "#{AUDIO_PATH}/nw_interruption.mp3"
-    @new_message = @_init_sound z.audio.AudioType.NEW_MESSAGE, "#{AUDIO_PATH}/new_message.mp3"
-    @ping_from_me = @_init_sound z.audio.AudioType.OUTGOING_PING, "#{AUDIO_PATH}/ping_from_me.mp3"
-    @ping_from_them = @_init_sound z.audio.AudioType.INCOMING_PING, "#{AUDIO_PATH}/ping_from_them.mp3"
-    @ready_to_talk = @_init_sound z.audio.AudioType.READY_TO_TALK, "#{AUDIO_PATH}/ready_to_talk.mp3"
-    @ringing_from_me = @_init_sound z.audio.AudioType.OUTGOING_CALL, "#{AUDIO_PATH}/ringing_from_me.mp3"
-    @ringing_from_them = @_init_sound z.audio.AudioType.INCOMING_CALL, "#{AUDIO_PATH}/ringing_from_them.mp3"
-    @talk_later = @_init_sound z.audio.AudioType.TALK_LATER, "#{AUDIO_PATH}/talk_later.mp3"
+    @sounds =
+      "#{z.audio.AudioType.ALERT}": new Audio "#{AUDIO_PATH}/alert.mp3"
+      "#{z.audio.AudioType.CALL_DROP}": new Audio "#{AUDIO_PATH}/call_drop.mp3"
+      "#{z.audio.AudioType.NETWORK_INTERRUPTION}": new Audio "#{AUDIO_PATH}/nw_interruption.mp3"
+      "#{z.audio.AudioType.NEW_MESSAGE}": new Audio "#{AUDIO_PATH}/new_message.mp3"
+      "#{z.audio.AudioType.OUTGOING_PING}": new Audio "#{AUDIO_PATH}/ping_from_me.mp3"
+      "#{z.audio.AudioType.INCOMING_PING}": new Audio "#{AUDIO_PATH}/ping_from_them.mp3"
+      "#{z.audio.AudioType.READY_TO_TALK}": new Audio "#{AUDIO_PATH}/ready_to_talk.mp3"
+      "#{z.audio.AudioType.OUTGOING_CALL}": new Audio "#{AUDIO_PATH}/ringing_from_me.mp3"
+      "#{z.audio.AudioType.INCOMING_CALL}": new Audio "#{AUDIO_PATH}/ringing_from_them.mp3"
+      "#{z.audio.AudioType.TALK_LATER}": new Audio "#{AUDIO_PATH}/talk_later.mp3"
+
+  ###
+  Start playback of a sound
+  @private
+  @param audio_id [z.audio.AudioType] Sound identifier
+  ###
+  _play: (audio_id) ->
+    return if @sound_setting() is z.audio.AudioSetting.NONE and audio_id not in z.audio.AudioPlayingType.NONE
+    return if @sound_setting() is z.audio.AudioSetting.SOME and audio_id not in z.audio.AudioPlayingType.SOME
+
+    @_get_sound audio_id
+    .then (audio) =>
+      if audio.paused
+        @logger.log @logger.levels.INFO, "Playing sound '#{audio_id}'", audio
+        audio.currentTime = 0 if audio.currentTime isnt 0
+        audio.loop = false
+        audio.play()
+    .catch (error) =>
+      @logger.log @logger.levels.ERROR, "Failed playing sound '#{audio_id}': #{error.message}", audio
+
+  ###
+  Start playback of a sound in a loop.
+  @private
+  @note Prevent playing multiples instances of looping sounds
+  @param audio_id [z.audio.AudioType] Sound identifier
+  ###
+  _play_in_loop: (audio_id) ->
+    return if @sound_setting() is z.audio.AudioSetting.NONE and audio_id not in z.audio.AudioPlayingType.NONE
+    return if @sound_setting() is z.audio.AudioSetting.SOME and audio_id not in z.audio.AudioPlayingType.SOME
+
+    @_get_sound audio_id
+    .then (audio) =>
+      if audio.paused
+        @logger.log @logger.levels.INFO, "Looping sound '#{audio_id}'", audio
+        @in_loop[audio_id] = audio_id
+        audio.currentTime = 0 if audio.currentTime isnt 0
+        audio.loop = true
+        audio.play()
+      else
+        @logger.log @logger.levels.WARN, "Sound '#{audio_id}' is already looping", audio
+    .catch (error) =>
+      @logger.log @logger.levels.ERROR, "Failed looping sound '#{audio_id}': #{error.message}", audio
+
+  ###
+  Stop playback of a sound.
+  @private
+  @param audio_id [z.audio.AudioType] Sound identifier
+  ###
+  _stop: (audio_id) ->
+    @_get_sound audio_id
+    .then (audio) =>
+      if not audio.paused
+        @logger.log @logger.levels.INFO, "Stopping sound '#{audio_id}'", audio
+        audio.pause()
+      delete @in_loop[audio_id] if @in_loop[audio_id]
+    .catch (error) =>
+      @logger.log @logger.levels.ERROR, "Failed stopping sound '#{audio_id}': #{error.message}", audio
+
+  # Stop all sounds playing in loop.
+  _stop_all: ->
+    @_stop sound for sound of @in_loop
 
   # Use Amplify to subscribe to all audio playback related events.
   _subscribe_to_audio_events: ->
@@ -98,63 +167,3 @@ class z.audio.AudioRepository
 
     amplify.subscribe z.event.WebApp.PROPERTIES.UPDATE.SOUND_ALERTS, (value) =>
       @sound_setting value
-
-  # Initialize the SoundManager.
-  _init_sound_manager: ->
-    soundManager.setup
-      debugMode: false
-      useConsole: false
-      onready: =>
-        @_init_sounds()
-        @_subscribe_to_audio_events()
-
-  ###
-  Start playback of a sound
-  @param audio_id [String] Sound that should be played
-  ###
-  _play: (audio_id) ->
-    audio = soundManager.getSoundById audio_id
-
-    return if @sound_setting() is z.audio.AudioSetting.NONE and audio_id not in z.audio.AudioPlayingType.NONE
-    return if @sound_setting() is z.audio.AudioSetting.SOME and audio_id not in z.audio.AudioPlayingType.SOME
-
-    @logger.log "Playing sound: #{audio_id}", audio
-    audio.play()
-
-  ###
-  Start playback of a sound in a loop.
-
-  @note Prevent playing multiples instances of looping sounds
-  @param audio [Object] SoundManager sound object
-  @param is_first_time [Boolean] Is this the initial call or an on finish loop
-  ###
-  _play_in_loop: (audio_id, is_first_time = true) ->
-    audio = soundManager.getSoundById audio_id
-
-    return if @sound_setting() is z.audio.AudioSetting.NONE and audio_id not in z.audio.AudioPlayingType.NONE
-    return if @sound_setting() is z.audio.AudioSetting.SOME and audio_id not in z.audio.AudioPlayingType.SOME
-
-    if not @in_loop[audio_id]
-      @logger.log "Looping sound: #{audio_id}", audio
-      @in_loop[audio_id] = audio_id
-    else
-      return if is_first_time
-
-    audio.play onfinish: =>
-      @_play_in_loop audio.id, false
-
-  ###
-  Stop playback of a sound.
-  @param audio [Object] SoundManager sound object
-  ###
-  _stop: (audio_id) ->
-    audio = soundManager.getSoundById audio_id
-
-    @logger.log "Stopping sound: #{audio_id}", audio
-    audio.stop()
-
-    delete @in_loop[audio_id] if @in_loop[audio_id]
-
-  # Stop all sounds playing in loop.
-  _stop_all: ->
-    @_stop sound for sound of @in_loop
