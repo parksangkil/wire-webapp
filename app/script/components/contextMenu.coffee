@@ -36,11 +36,12 @@ class z.components.ContextMenuViewModel
     # parameter list
     @tag = params.tag
     @data = params.data
-    @entries = params.entries
+    @entry_provider = params.entries
     @placement = params.placement or 'left'
     @element = component_info.element
 
     @bubble = undefined
+    @entries = ko.observableArray()
 
     @host_id = z.util.create_random_uuid()
     @bubble_id = z.util.create_random_uuid()
@@ -49,8 +50,8 @@ class z.components.ContextMenuViewModel
       amplify.publish z.event.WebApp.CONTEXT_MENU, @tag, data.action, @data
 
     @get_entries = ->
-      entries = if _.isFunction(@entries) then @entries() else @entries
-      return entries?.entries
+      entries = if _.isFunction(@entry_provider) then @entry_provider() else @entry_provider
+      @entries entries?.entries
 
     @element.addEventListener 'click', @on_context_menu_button_click
     @element.setAttribute 'id', @host_id
@@ -65,6 +66,7 @@ class z.components.ContextMenuViewModel
     @bubble?.hide()
 
   on_context_menu_button_click: =>
+    @get_entries()
     @bubble ?= new zeta.webapp.module.Bubble {host_selector: "##{@host_id}"}
     @bubble.toggle()
 
@@ -79,7 +81,7 @@ ko.components.register 'context-menu',
   template: """
             <div data-bind="attr: {id: bubble_id}" class="bubble">
               <ul class="bubble-menu">
-                <!-- ko foreach: get_entries() -->
+                <!-- ko foreach: entries -->
                   <li data-bind="click: $parent.on_entry_click, text: label, attr: {'data-context-action': action}"></li>
                 <!-- /ko -->
               </ul>
