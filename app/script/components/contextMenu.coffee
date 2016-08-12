@@ -59,7 +59,7 @@ class z.components.ContextMenuViewModel
     @element.setAttribute 'data-context-tag', @tag
     @element.setAttribute 'data-context-data', @data
 
-    window.addEventListener 'scroll', @on_window_scroll
+    window.addEventListener 'scroll', @on_window_scroll, true
 
   on_window_scroll: =>
     @bubble?.hide()
@@ -69,6 +69,7 @@ class z.components.ContextMenuViewModel
     @bubble.toggle()
 
   dispose: =>
+    @element.removeEventListener 'click', @on_context_menu_button_click
     window.removeEventListener 'scroll', @on_window_scroll
 
 
